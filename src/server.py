@@ -11,7 +11,7 @@ def greet(name: str) -> str:
 @mcp.tool(description="Get information about the MCP server including name, version, environment, and Python version")
 def get_server_info() -> dict:
     return {
-        "server_name": "Sample MCP Server",
+        "server_name": "MCP Server for Teeqo",
         "version": "1.0.0",
         "environment": os.environ.get("ENVIRONMENT", "development"),
         "python_version": os.sys.version.split()[0]
