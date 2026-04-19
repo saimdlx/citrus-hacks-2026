@@ -1,11 +1,7 @@
 import os
-import math
 from google import genai
+from google.genai import types
 
-# We initialize these as None and lazily load them upon first tool execution.
-# This completely prevents any external boot latency!
-KEYWORD_EMBEDDINGS = None
-# We use the extremely lightweight cloud-computed embedding dimension API
 client = None
 
 # Predefined categories mapping generic terms to actionable event keywords
@@ -20,32 +16,15 @@ PREDEFINED_KEYWORDS = [
 ]
 
 def load_model_if_needed():
-    global KEYWORD_EMBEDDINGS, client
+    global client
     if client is None:
         gemini_api_key = os.environ.get("GEMINI_API_KEY")
         client = genai.Client(api_key=gemini_api_key)
-        
-    if KEYWORD_EMBEDDINGS is None:
-        print("Fetching Semantic Embeddings via Gemini API...")
-        response = client.models.embed_content(
-            model="models/embedding-001",
-            contents=PREDEFINED_KEYWORDS
-        )
-        # Store as standard python floats
-        KEYWORD_EMBEDDINGS = [emb.values for emb in response.embeddings]
-
-def cosine_similarity(v1: list[float], v2: list[float]) -> float:
-    dot_product = sum(a * b for a, b in zip(v1, v2))
-    mag1 = math.sqrt(sum(a * a for a in v1))
-    mag2 = math.sqrt(sum(b * b for b in v2))
-    if mag1 == 0 or mag2 == 0:
-        return 0.0
-    return dot_product / (mag1 * mag2)
 
 def run_semantic_algorithm(profile: dict, threshold: float = 0.50) -> list[str]:
     """
-    A purely cloud-native semantic search recommender that maps a user's freeform 
-    interests to actionable event keywords using Cosine Similarity on Google Text Embeddings.
+    Acts as a Semantic Filter mapper by leveraging Gemini's core logical similarity mapping
+    instead of relying on raw mathematical embedding endpoints which often hit API constraints.
     """
     load_model_if_needed()
     interests = profile.get("interests", [])
@@ -53,31 +32,37 @@ def run_semantic_algorithm(profile: dict, threshold: float = 0.50) -> list[str]:
     if not interests:
         return ["local events", "entertainment"]
     
-    selected_keywords = set()
-    
-    # Process all user interests via batch request to Gemini Embeddings
-    response = client.models.embed_content(
-        model="models/embedding-001",
-        contents=interests
+    prompt = (
+        f"User Interests: {', '.join(interests)}\n\n"
+        f"Predefined Keywords: {', '.join(PREDEFINED_KEYWORDS)}\n\n"
+        "Map the User Interests semantically to the closest matching Predefined Keywords. "
+        "Strictly output only a comma-separated list of the matching Predefined Keywords."
     )
-    interest_embeddings = [emb.values for emb in response.embeddings]
-    
-    for interest_embedding in interest_embeddings:
-        # Calculate cosine similarities purely mathematically natively
-        for idx, keyword_embedding in enumerate(KEYWORD_EMBEDDINGS):
-            score = cosine_similarity(interest_embedding, keyword_embedding)
-            if score >= threshold:
-                selected_keywords.add(PREDEFINED_KEYWORDS[idx])
-                
-    if not selected_keywords:
-        # Fallback if no strong semantic matches were found
-        selected_keywords.add("local events")
+
+    try:
+        # We explicitly use the standard text-generation model which undeniably works with your API key
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.0 # Deterministic
+            )
+        )
         
-    return list(selected_keywords)
+        # Parse output into clean list
+        output_txt = response.text.replace("\n", "").strip()
+        matched_keywords = [kw.strip() for kw in output_txt.split(",") if kw.strip()]
+        
+        if not matched_keywords:
+            return ["local events"]
+            
+        return matched_keywords
+        
+    except Exception as e:
+        print(f"Algorithm failure: {e}", flush=True)
+        return ["local events"]
 
 if __name__ == "__main__":
-    test_profile = {
-        "interests": ["gaming and software", "symphony", "baking and desserts"]
-    }
-    print("Testing Semantic API Recommender...")
+    test_profile = {"interests": ["gaming and software", "symphony", "baking and desserts"]}
+    print("Testing Fallback Semantic Recommender...")
     print(run_semantic_algorithm(test_profile))
