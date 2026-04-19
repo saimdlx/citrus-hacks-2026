@@ -1,5 +1,6 @@
 import os
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import json
 from fastmcp import FastMCP
 from dotenv import load_dotenv
@@ -25,24 +26,27 @@ mcp = FastMCP("Event Recommender MCP Server")
 def get_user_profile(email: str) -> str:
     """
     Called by the Orchestrator to read the latest user profile directly 
-    from the persistent Prisma SQLite database natively.
+    from the persistent PostgreSQL database natively.
     """
-    # Define path to the Prisma dev.db
-    db_path = os.path.join(os.path.dirname(__file__), "../my-app/prisma/dev.db")
-    if not os.path.exists(db_path):
-        return json.dumps({"error": f"Database not found at {db_path}"})
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return json.dumps({"error": "DATABASE_URL environment variable is missing in backend."})
         
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        # Querying the 'User' table automatically built by Prisma
-        cursor.execute("SELECT * FROM User WHERE email = ?", (email,))
+        # Natively connect to the remote Postgres database instance
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # In Prisma, the table is called "User"
+        cursor.execute('SELECT * FROM "User" WHERE email = %s', (email,))
         row = cursor.fetchone()
+        
+        cursor.close()
         conn.close()
         
         if row:
-            return json.dumps(dict(row))
+            # We convert datetime objects (if any) to strings for JSON serialization
+            return json.dumps(row, default=str)
         return json.dumps({"error": "User not found."})
     except Exception as e:
         return json.dumps({"error": f"Database error: {str(e)}"})
