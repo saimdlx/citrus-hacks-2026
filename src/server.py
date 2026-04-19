@@ -107,14 +107,13 @@ def generate_recommendation(
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    host = "0.0.0.0"
     
-    print(f"Starting FastMCP server on {host}:{port}")
-
+    # Render requires explicit binding to 0.0.0.0 so its scanner can detect the open port.
+    print(f"Booting FastMCP Server on 0.0.0.0:{port}...")
     
+    # We must use transport="sse" to correctly instantiate the ASGI Web Server explicitly.
     mcp.run(
-        transport="http",
-        host=host,
-        port=port,
-        stateless_http=True
+        transport="sse",
+        host="0.0.0.0",
+        port=port
     )

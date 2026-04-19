@@ -65,7 +65,7 @@ export default function UserForm() {
             imboard
           </h1>
           <p className="text-gray-400 mb-8 text-sm">
-            Tell us about yourself. Our AI orchestrator will curate the perfect local events and reach out to you directly.
+            The imboard orchestrator will curate the perfect local events and reach out to you directly.
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
