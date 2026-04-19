@@ -2,8 +2,10 @@ import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer, util
 
-# Use a lightweight fast model for semantic similarity
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# We initialize these as None and lazily load them upon first tool execution.
+# This prevents the 400MB HuggingFace download from completely blocking Render's boot cycle!
+model = None
+KEYWORD_EMBEDDINGS = None
 
 # Predefined categories mapping generic terms to actionable event keywords
 PREDEFINED_KEYWORDS = [
@@ -16,14 +18,19 @@ PREDEFINED_KEYWORDS = [
     "theater", "comedy show"
 ]
 
-# Precompute embeddings for standard keywords to optimize repetitive calls
-KEYWORD_EMBEDDINGS = model.encode(PREDEFINED_KEYWORDS, convert_to_tensor=True)
+def load_model_if_needed():
+    global model, KEYWORD_EMBEDDINGS
+    if model is None:
+        print("Downloading/Loading Semantic Model...")
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        KEYWORD_EMBEDDINGS = model.encode(PREDEFINED_KEYWORDS, convert_to_tensor=True)
 
 def run_semantic_algorithm(profile: dict, threshold: float = 0.40) -> list[str]:
     """
     A semantic search recommender that maps a user's freeform interests
     to actionable event keywords using Cosine Similarity on text embeddings.
     """
+    load_model_if_needed()
     interests = profile.get("interests", [])
     
     if not interests:
