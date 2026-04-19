@@ -28,7 +28,7 @@ def load_model_if_needed():
     if KEYWORD_EMBEDDINGS is None:
         print("Fetching Semantic Embeddings via Gemini API...")
         response = client.models.embed_content(
-            model="text-embedding-004",
+            model="models/embedding-001",
             contents=PREDEFINED_KEYWORDS
         )
         # Store as standard python floats
@@ -57,7 +57,7 @@ def run_semantic_algorithm(profile: dict, threshold: float = 0.50) -> list[str]:
     
     # Process all user interests via batch request to Gemini Embeddings
     response = client.models.embed_content(
-        model="text-embedding-004",
+        model="models/embedding-001",
         contents=interests
     )
     interest_embeddings = [emb.values for emb in response.embeddings]
