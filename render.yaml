@@ -3,7 +3,7 @@ services:
     name: fastmcp-server
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python -u src/server.py
+    startCommand: fastmcp run src/server.py:mcp --transport sse
     plan: free
     autoDeploy: false
     envVars:
