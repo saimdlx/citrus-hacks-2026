@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
 import os
+import sqlite3
 import json
 from fastmcp import FastMCP
 from dotenv import load_dotenv
@@ -16,24 +16,56 @@ from api_tools import (
     scrape_local_events
 )
 
+# Import the semantic search mechanism
+from recommender import run_semantic_algorithm
+
 mcp = FastMCP("Event Recommender MCP Server")
+
+@mcp.resource("user://{email}/profile")
+def get_user_profile(email: str) -> str:
+    """
+    Called by the Orchestrator to read the latest user profile directly 
+    from the persistent Prisma SQLite database natively.
+    """
+    # Define path to the Prisma dev.db
+    db_path = os.path.join(os.path.dirname(__file__), "../my-app/prisma/dev.db")
+    if not os.path.exists(db_path):
+        return json.dumps({"error": f"Database not found at {db_path}"})
+        
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        # Querying the 'User' table automatically built by Prisma
+        cursor.execute("SELECT * FROM User WHERE email = ?", (email,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.dumps(dict(row))
+        return json.dumps({"error": "User not found."})
+    except Exception as e:
+        return json.dumps({"error": f"Database error: {str(e)}"})
 
 @mcp.tool(description="Analyze deterministic user preferences, find local events using APIs, and formulate a formatted recommendation message.")
 def generate_recommendation(
     user_name: str, 
     email: str, 
     location: str, 
-    deterministic_keywords: list[str]
+    raw_interests: list[str]
 ) -> str:
     """
-    Called by the orchestrating agent with user profile and deterministic keywords.
-    Uses Gemini API to interpret tools and return the completed string.
+    Called by the orchestrating agent with user profile.
+    Uses Semantic Algorithm to map interests, then Gemini API to interpret tools and return string.
     """
     gemini_api_key = os.environ.get("GEMINI_API_KEY")
     if not gemini_api_key:
         return "Error: GEMINI_API_KEY environment variable is missing."
 
     client = genai.Client(api_key=gemini_api_key)
+    
+    # 1. Process freeform text into deterministic keywords
+    resolved_keywords = run_semantic_algorithm({"interests": raw_interests})
     
     system_instruction = (
         "You are an expert event curator and assistant. "
@@ -52,7 +84,7 @@ def generate_recommendation(
     prompt = (
         f"User Name: {user_name}\n"
         f"Location: {location}\n"
-        f"Algorithm-derived Keywords: {', '.join(deterministic_keywords)}\n\n"
+        f"Algorithm-derived Keywords: {', '.join(resolved_keywords)}\n\n"
         "Please find local events matching these keywords and provide a rich formatted recommendation message."
     )
 

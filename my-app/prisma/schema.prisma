@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// For local testing, we are using SQLite. 
+// When ready for Vercel production, this can seamlessly be changed to "postgresql".
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  location  String
+  // We'll store interests as a serialized JSON string or a comma-separated string
+  interests String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

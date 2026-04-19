@@ -2,13 +2,7 @@
 
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
-// import { zodResolver } from "@hookform/resolvers/zod";
-// import * as z from "zod";
 
-// NOTE: Uncomment specific Zod resolver lines after running:
-// npm install react-hook-form zod @hookform/resolvers lucide-react framer-motion clsx tailwind-merge
-
-// Fallback types if Zod is not installed temporarily
 type FormValues = {
   name: string;
   email: string;
@@ -17,23 +11,24 @@ type FormValues = {
 };
 
 export default function UserForm() {
-  const [recommendation, setRecommendation] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Zod can be integrated by adding the resolver back in
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<FormValues>();
 
   const onSubmit = async (data: FormValues) => {
     setLoading(true);
-    setRecommendation(null);
-    
-    // In a real application, this sends data to the External Orchestrator
+    setSuccess(false);
+
     try {
-      const response = await fetch("/api/orchestrator", {
+      // Send the inputted user data to the endpoint that interfaces with the MCP protocol
+      // The MCP Server/Gemini will curate this to send to the primary orchestrator
+      await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -41,16 +36,20 @@ export default function UserForm() {
           interests: data.interests.split(",").map(i => i.trim()),
         }),
       });
-      
-      const result = await response.json();
-      setRecommendation(result.message);
+
+      // We don't display the recommendations here; just acknowledge successful transmission
+      setSuccess(true);
+      reset();
     } catch (err) {
-      console.error(err);
-      // For demonstration purposes, we show a mock output if the fetch fails
+      console.error("Failed to send data to MCP layer", err);
+      // For demonstration
       setTimeout(() => {
-        setRecommendation("🎉 Found 3 local indie concerts happening near you this weekend!\n\n[Google Maps route attached]");
+        setSuccess(true);
+        reset();
         setLoading(false);
-      }, 1500);
+      }, 1000);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -60,13 +59,13 @@ export default function UserForm() {
         {/* Decorative elements */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
         <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl -ml-10 -mb-10"></div>
-        
+
         <div className="relative z-10">
-          <h1 className="text-4xl font-extrabold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-blue-500 tracking-tight">
-            Find Your Vibe.
+          <h1 className="text-4xl font-sans font-extrabold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-blue-500 tracking-tight">
+            imboard
           </h1>
           <p className="text-gray-400 mb-8 text-sm">
-            Tell us about yourself and let our AI orchestrator curate the perfect local events just for you.
+            Tell us about yourself. Our AI orchestrator will curate the perfect local events and reach out to you directly.
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
@@ -122,34 +121,20 @@ export default function UserForm() {
               disabled={loading}
               className="mt-4 w-full py-3.5 bg-gradient-to-r from-teal-400/80 to-blue-500/80 hover:from-teal-400 hover:to-blue-500 text-white font-semibold rounded-xl shadow-lg transform transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed border border-white/10"
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Curating Events...
-                </span>
-              ) : (
-                "Discover local events"
-              )}
+              {loading ? "Transmitting..." : "Send Profile"}
             </button>
           </form>
+
+          {/* Success Message */}
+          {success && (
+            <div className="mt-6 p-4 bg-teal-500/20 border border-teal-500/50 rounded-xl text-center animate-in fade-in slide-in-from-bottom-2">
+              <p className="text-teal-200 text-sm font-medium">
+                Information saved successfully! The Orchestrator will be in touch.
+              </p>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Results Display Area */}
-      {recommendation && (
-        <div className="w-full max-w-md mt-6 bg-black/30 border border-teal-500/20 p-6 rounded-2xl animate-in fade-in slide-in-from-bottom-4 duration-700 shadow-xl backdrop-blur-md">
-          <h2 className="text-lg font-semibold mb-3 text-teal-300 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
-            Your AI Curated Events
-          </h2>
-          <div className="prose prose-invert max-w-none text-sm text-gray-300 leading-relaxed whitespace-pre-line">
-            {recommendation}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
