@@ -1,11 +1,12 @@
-import numpy as np
-import torch
-from sentence_transformers import SentenceTransformer, util
+import os
+import math
+from google import genai
 
 # We initialize these as None and lazily load them upon first tool execution.
-# This prevents the 400MB HuggingFace download from completely blocking Render's boot cycle!
-model = None
+# This completely prevents any external boot latency!
 KEYWORD_EMBEDDINGS = None
+# We use the extremely lightweight cloud-computed embedding dimension API
+client = None
 
 # Predefined categories mapping generic terms to actionable event keywords
 PREDEFINED_KEYWORDS = [
@@ -19,16 +20,32 @@ PREDEFINED_KEYWORDS = [
 ]
 
 def load_model_if_needed():
-    global model, KEYWORD_EMBEDDINGS
-    if model is None:
-        print("Downloading/Loading Semantic Model...")
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-        KEYWORD_EMBEDDINGS = model.encode(PREDEFINED_KEYWORDS, convert_to_tensor=True)
+    global KEYWORD_EMBEDDINGS, client
+    if client is None:
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        client = genai.Client(api_key=gemini_api_key)
+        
+    if KEYWORD_EMBEDDINGS is None:
+        print("Fetching Semantic Embeddings via Gemini API...")
+        response = client.models.embed_content(
+            model="text-embedding-004",
+            contents=PREDEFINED_KEYWORDS
+        )
+        # Store as standard python floats
+        KEYWORD_EMBEDDINGS = [emb.values for emb in response.embeddings]
 
-def run_semantic_algorithm(profile: dict, threshold: float = 0.40) -> list[str]:
+def cosine_similarity(v1: list[float], v2: list[float]) -> float:
+    dot_product = sum(a * b for a, b in zip(v1, v2))
+    mag1 = math.sqrt(sum(a * a for a in v1))
+    mag2 = math.sqrt(sum(b * b for b in v2))
+    if mag1 == 0 or mag2 == 0:
+        return 0.0
+    return dot_product / (mag1 * mag2)
+
+def run_semantic_algorithm(profile: dict, threshold: float = 0.50) -> list[str]:
     """
-    A semantic search recommender that maps a user's freeform interests
-    to actionable event keywords using Cosine Similarity on text embeddings.
+    A purely cloud-native semantic search recommender that maps a user's freeform 
+    interests to actionable event keywords using Cosine Similarity on Google Text Embeddings.
     """
     load_model_if_needed()
     interests = profile.get("interests", [])
@@ -36,19 +53,20 @@ def run_semantic_algorithm(profile: dict, threshold: float = 0.40) -> list[str]:
     if not interests:
         return ["local events", "entertainment"]
     
-    # Optional weighting based on age or other demographics could go here
-    age = profile.get("age", 25)
-    
     selected_keywords = set()
     
-    for interest in interests:
-        interest_embedding = model.encode(interest, convert_to_tensor=True)
-        # Calculate cosine similarities
-        cosine_scores = util.cos_sim(interest_embedding, KEYWORD_EMBEDDINGS)[0]
-        
-        # Find keywords above threshold
-        for idx, score in enumerate(cosine_scores):
-            if score.item() >= threshold:
+    # Process all user interests via batch request to Gemini Embeddings
+    response = client.models.embed_content(
+        model="text-embedding-004",
+        contents=interests
+    )
+    interest_embeddings = [emb.values for emb in response.embeddings]
+    
+    for interest_embedding in interest_embeddings:
+        # Calculate cosine similarities purely mathematically natively
+        for idx, keyword_embedding in enumerate(KEYWORD_EMBEDDINGS):
+            score = cosine_similarity(interest_embedding, keyword_embedding)
+            if score >= threshold:
                 selected_keywords.add(PREDEFINED_KEYWORDS[idx])
                 
     if not selected_keywords:
@@ -59,16 +77,7 @@ def run_semantic_algorithm(profile: dict, threshold: float = 0.40) -> list[str]:
 
 if __name__ == "__main__":
     test_profile = {
-        "name": "Jane",
-        "email": "jane@example.com",
-        "location": "Los Angeles",
-        "age": 22,
-        # "gaming and software" strongly relates to "tech meetup" and "hackathon"
-        # "symphony" relates to "classical music" and "concert"
         "interests": ["gaming and software", "symphony", "baking and desserts"]
     }
-    
-    print("Testing Semantic Search Recommender...")
-    print(f"Profile Interests: {test_profile['interests']}")
-    extracted = run_semantic_algorithm(test_profile)
-    print(f"Semantic Algorithm Output: {extracted}")
+    print("Testing Semantic API Recommender...")
+    print(run_semantic_algorithm(test_profile))
